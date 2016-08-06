@@ -1,0 +1,6 @@
+[package]
+name = "gmachine"
+version = "0.1.0"
+authors = ["hawnzug <hawnzug@gmail.com>"]
+
+[dependencies]
