@@ -4,22 +4,27 @@ use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use std::str::Chars;
+use std::num;
+use std::fmt;
+use std::error;
+use std::io;
 
 pub struct Lexer {
     pub tokens: Vec<TokenAndPos>,
 }
 
 impl Lexer {
-    pub fn new<P: AsRef<Path>>(file_path: P) -> Self {
-        let mut file = File::open(file_path).unwrap();
+    pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, LexError> {
+        let mut file = try!(File::open(file_path));
         let mut content: String = String::new();
-        file.read_to_string(&mut content).unwrap();
+        try!(file.read_to_string(&mut content));
         let file_reader = StringReader {
             pos: Pos::new(1, 0),
             iter: content.chars(),
             curr: None,
         };
-        Lexer { tokens: file_reader.tokenize() }
+        let tokens = try!(file_reader.tokenize());
+        Ok(Lexer { tokens: tokens })
     }
 }
 
@@ -40,7 +45,7 @@ impl<'a> StringReader<'a> {
         self.curr = self.iter.next();
     }
 
-    fn tokenize(mut self) -> Vec<TokenAndPos> {
+    fn tokenize(mut self) -> Result<Vec<TokenAndPos>, LexError> {
         let mut tokens = Vec::new();
         self.bump();
         loop {
@@ -52,7 +57,7 @@ impl<'a> StringReader<'a> {
                 '\r' => {
                     self.bump();
                     if self.curr != Some('\n') {
-                        unimplemented!();
+                        return Err(LexError::Singler);
                     }
                 }
                 c if c.is_alphabetic() => {
@@ -90,7 +95,7 @@ impl<'a> StringReader<'a> {
                             _ => break,
                         }
                     }
-                    let n = number.parse().unwrap();
+                    let n = try!(number.parse());
                     tokens.push(TokenAndPos {
                         token: Token::Literal(Lit::Integer(n)),
                         pos: start,
@@ -180,10 +185,56 @@ impl<'a> StringReader<'a> {
                 _ => self.bump(),
             }
         }
-        tokens
+        Ok(tokens)
     }
 }
 
+#[derive(Debug)]
+pub enum LexError {
+    FileToString(io::Error),
+    ReadInt(num::ParseIntError),
+    Singler,
+}
+
+impl fmt::Display for LexError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            LexError::ReadInt(ref err) => write!(f, "Parse integer error: {}", err),
+            LexError::FileToString(ref err) => write!(f, "File error: {}", err),
+            LexError::Singler => write!(f, "There must be \\n after \\r"),
+        }
+    }
+}
+
+impl error::Error for LexError {
+    fn description(&self) -> &str {
+        match *self {
+            LexError::ReadInt(ref err) => err.description(),
+            LexError::FileToString(ref err) => err.description(),
+            LexError::Singler => "No \\n after \\r",
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            LexError::ReadInt(ref err) => Some(err),
+            LexError::FileToString(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<num::ParseIntError> for LexError {
+    fn from(err: num::ParseIntError) -> LexError {
+        LexError::ReadInt(err)
+    }
+}
+
+impl From<io::Error> for LexError {
+    fn from(err: io::Error) -> LexError {
+        LexError::FileToString(err)
+    }
+}
 
 #[cfg(test)]
 mod tests {
