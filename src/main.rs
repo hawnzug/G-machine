@@ -22,5 +22,7 @@ fn main() {
 }
 
 fn run_prog<P: AsRef<Path>>(file_path: P) {
-    show_result(eval(compile(parse(file_path))));
+    let prog = parse(file_path).unwrap();
+    println!("{:?}", prog);
+    show_result(eval(compile(prog)));
 }

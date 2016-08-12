@@ -9,26 +9,19 @@ use std::fmt;
 use std::error;
 use std::io;
 
-pub struct Lexer {
-    pub tokens: Vec<TokenAndPos>,
+pub fn tokenize<P: AsRef<Path>>(file_path: P) -> Result<Vec<TokenAndPos>, LexError> {
+    let mut file = try!(File::open(file_path));
+    let mut content: String = String::new();
+    try!(file.read_to_string(&mut content));
+    let file_reader = StringReader {
+        pos: Pos::new(1, 0),
+        iter: content.chars(),
+        curr: None,
+    };
+    file_reader.tokenize()
 }
 
-impl Lexer {
-    pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, LexError> {
-        let mut file = try!(File::open(file_path));
-        let mut content: String = String::new();
-        try!(file.read_to_string(&mut content));
-        let file_reader = StringReader {
-            pos: Pos::new(1, 0),
-            iter: content.chars(),
-            curr: None,
-        };
-        let tokens = try!(file_reader.tokenize());
-        Ok(Lexer { tokens: tokens })
-    }
-}
-
-struct StringReader<'a> {
+pub struct StringReader<'a> {
     pos: Pos,
     iter: Chars<'a>,
     curr: Option<char>,
@@ -105,43 +98,70 @@ impl<'a> StringReader<'a> {
                     tokens.push(TokenAndPos {
                         token: Token::OpenParen,
                         pos: self.pos,
-                    })
+                    });
+                    self.bump();
                 }
                 ')' => {
                     tokens.push(TokenAndPos {
                         token: Token::CloseParen,
                         pos: self.pos,
-                    })
+                    });
+                    self.bump();
+                }
+                '\\' => {
+                    tokens.push(TokenAndPos {
+                        token: Token::BackSlash,
+                        pos: self.pos,
+                    });
+                    self.bump();
+                }
+                '.' => {
+                    tokens.push(TokenAndPos {
+                        token: Token::Dot,
+                        pos: self.pos,
+                    });
+                    self.bump();
                 }
                 ';' => {
                     tokens.push(TokenAndPos {
                         token: Token::Semi,
                         pos: self.pos,
-                    })
+                    });
+                    self.bump();
                 }
                 '+' => {
                     tokens.push(TokenAndPos {
                         token: Token::BinOp(BinOpToken::Plus),
                         pos: self.pos,
-                    })
+                    });
+                    self.bump();
                 }
                 '-' => {
+                    let start = self.pos;
+                    self.bump();
                     tokens.push(TokenAndPos {
-                        token: Token::BinOp(BinOpToken::Minus),
-                        pos: self.pos,
-                    })
+                        token: if self.curr == Some('>') {
+                            self.bump();
+                            Token::RightArrow
+                        } else {
+                            Token::BinOp(BinOpToken::Minus)
+                        },
+                        pos: start,
+                    });
                 }
                 '*' => {
                     tokens.push(TokenAndPos {
                         token: Token::BinOp(BinOpToken::Star),
                         pos: self.pos,
-                    })
+                    });
+                    self.bump();
                 }
                 '/' => {
                     tokens.push(TokenAndPos {
                         token: Token::BinOp(BinOpToken::Slash),
                         pos: self.pos,
-                    })
+                    });
+                    self.bump();
                 }
                 '=' => {
                     let start = self.pos;
@@ -239,7 +259,25 @@ impl From<io::Error> for LexError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use token::*;
+
+    fn prepare(s: &str) -> Lexer {
+        let file_reader = StringReader {
+            pos: Pos::new(1, 0),
+            iter: s.chars(),
+            curr: None,
+        };
+        let tokens = file_reader.tokenize().unwrap();
+        Lexer {
+            tokens: tokens,
+            curr_index: 0,
+        }
+    }
 
     #[test]
-    fn integer() {}
+    fn integer() {
+        let mut lex = prepare("123456");
+        assert_eq!(Some(&Token::Literal(Lit::Integer(123456))),
+                   lex.current_token());
+    }
 }

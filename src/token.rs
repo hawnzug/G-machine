@@ -1,9 +1,12 @@
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Equal,
     OpenParen,
     CloseParen,
     Semi,
+    RightArrow,
+    BackSlash,
+    Dot,
 
     Literal(Lit),
     BinOp(BinOpToken),
@@ -11,12 +14,12 @@ pub enum Token {
     Ident(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Lit {
     Integer(i64),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinOpToken {
     Plus,
     Minus,
@@ -29,7 +32,7 @@ pub enum BinOpToken {
     EqEq,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Key {
     Let,
     Letrec,
@@ -39,13 +42,13 @@ pub enum Key {
     Pack,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pos {
     pub line: u32,
     pub column: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenAndPos {
     pub token: Token,
     pub pos: Pos,
