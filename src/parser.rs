@@ -39,6 +39,39 @@ impl Parser {
         Ok(program)
     }
 
+    fn bump(&mut self) {
+        self.curr_index += 1;
+        if self.curr_index < self.tokens.len() {
+            self.curr_token = Some(self.tokens[self.curr_index].token.clone());
+        } else {
+            self.curr_token = None;
+        }
+    }
+
+    fn parse_name(&mut self) -> Option<String> {
+        match self.curr_token {
+            Some(Token::Ident(_)) => {
+                if let Some(Token::Ident(s)) = mem::replace(&mut self.curr_token, None) {
+                    self.bump();
+                    Some(s)
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_num(&mut self) -> Option<i64> {
+        match self.curr_token {
+            Some(Token::Literal(Lit::Integer(num))) => {
+                self.bump();
+                Some(num)
+            }
+            _ => None,
+        }
+    }
+
     fn parse_scdef(&mut self) -> Result<ast::ScDef> {
         let name = if let Some(ast::Expr::EVar(s)) = self.parse_ident() {
             s
@@ -73,32 +106,34 @@ impl Parser {
             Some(Token::Keyword(Key::Letrec)) => self.parse_let(true),
             Some(Token::Keyword(Key::Case)) => self.parse_case(),
             Some(Token::BackSlash) => self.parse_lambda(),
-            _ => Ok(self.parse_integer().unwrap()),
+            _ => self.parse_apply(),
         }
     }
 
-    fn parse_name(&mut self) -> Option<String> {
+    fn parse_primary(&mut self) -> Result<Option<ast::Expr>> {
+        if let Some(ident) = self.parse_ident() {
+            return Ok(Some(ident));
+        }
+        if let Some(number) = self.parse_integer() {
+            return Ok(Some(number));
+        }
         match self.curr_token {
-            Some(Token::Ident(_)) => {
-                if let Some(Token::Ident(s)) = mem::replace(&mut self.curr_token, None) {
-                    self.bump();
-                    Some(s)
-                } else {
-                    unreachable!()
-                }
-            }
-            _ => None,
+            Some(Token::Keyword(Key::Pack)) => self.parse_pack().map(Some),
+            Some(Token::OpenParen) => self.parse_paren().map(Some),
+            _ => Ok(None),
         }
     }
 
-    fn parse_num(&mut self) -> Option<i64> {
-        match self.curr_token {
-            Some(Token::Literal(Lit::Integer(num))) => {
-                self.bump();
-                Some(num)
-            }
-            _ => None,
+    fn parse_apply(&mut self) -> Result<ast::Expr> {
+        let mut aps = if let Some(expr) = try!(self.parse_primary()) {
+            expr
+        } else {
+            return Err(ParseError::PlaceHolder);
+        };
+        while let Some(expr) = try!(self.parse_primary()) {
+            aps = ast::Expr::EAp(Box::new(aps), Box::new(expr));
         }
+        Ok(aps)
     }
 
     fn parse_ident(&mut self) -> Option<ast::Expr> {
@@ -107,6 +142,47 @@ impl Parser {
 
     fn parse_integer(&mut self) -> Option<ast::Expr> {
         self.parse_num().map(ast::Expr::ENum)
+    }
+
+    fn parse_pack(&mut self) -> Result<ast::Expr> {
+        self.bump();
+        if Some(Token::OpenBrace) == self.curr_token {
+            self.bump();
+        } else {
+            return Err(ParseError::PlaceHolder);
+        }
+        let x = if let Some(n) = self.parse_num() {
+            n
+        } else {
+            return Err(ParseError::PlaceHolder);
+        };
+        if Some(Token::Comma) == self.curr_token {
+            self.bump();
+        } else {
+            return Err(ParseError::PlaceHolder);
+        }
+        let y = if let Some(n) = self.parse_num() {
+            n
+        } else {
+            return Err(ParseError::PlaceHolder);
+        };
+        if Some(Token::CloseBrace) == self.curr_token {
+            self.bump();
+        } else {
+            return Err(ParseError::PlaceHolder);
+        }
+        Ok(ast::Expr::EConstr(x, y))
+    }
+
+    fn parse_paren(&mut self) -> Result<ast::Expr> {
+        self.bump();
+        let expr = try!(self.parse_expr());
+        if Some(Token::CloseParen) == self.curr_token {
+            self.bump();
+            Ok(expr)
+        } else {
+            Err(ParseError::PlaceHolder)
+        }
     }
 
     fn parse_let(&mut self, is_rec: bool) -> Result<ast::Expr> {
@@ -219,15 +295,6 @@ impl Parser {
         }
         let expr = try!(self.parse_expr());
         Ok(ast::Expr::ELam(args, Box::new(expr)))
-    }
-
-    fn bump(&mut self) {
-        self.curr_index += 1;
-        if self.curr_index < self.tokens.len() {
-            self.curr_token = Some(self.tokens[self.curr_index].token.clone());
-        } else {
-            self.curr_token = None;
-        }
     }
 }
 

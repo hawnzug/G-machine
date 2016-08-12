@@ -108,6 +108,20 @@ impl<'a> StringReader<'a> {
                     });
                     self.bump();
                 }
+                '{' => {
+                    tokens.push(TokenAndPos {
+                        token: Token::OpenBrace,
+                        pos: self.pos,
+                    });
+                    self.bump();
+                }
+                '}' => {
+                    tokens.push(TokenAndPos {
+                        token: Token::CloseBrace,
+                        pos: self.pos,
+                    });
+                    self.bump();
+                }
                 '\\' => {
                     tokens.push(TokenAndPos {
                         token: Token::BackSlash,
@@ -125,6 +139,13 @@ impl<'a> StringReader<'a> {
                 ';' => {
                     tokens.push(TokenAndPos {
                         token: Token::Semi,
+                        pos: self.pos,
+                    });
+                    self.bump();
+                }
+                ',' => {
+                    tokens.push(TokenAndPos {
+                        token: Token::Comma,
                         pos: self.pos,
                     });
                     self.bump();
