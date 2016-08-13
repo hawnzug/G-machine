@@ -26,7 +26,6 @@ pub fn parse<P: AsRef<Path>>(file_path: P) -> Result<ast::Program> {
     if !parser.tokens.is_empty() {
         parser.curr_token = Some(parser.tokens[0].token.clone());
     }
-
     parser.run()
 }
 
@@ -106,7 +105,7 @@ impl Parser {
             Some(Token::Keyword(Key::Letrec)) => self.parse_let(true),
             Some(Token::Keyword(Key::Case)) => self.parse_case(),
             Some(Token::BackSlash) => self.parse_lambda(),
-            _ => self.parse_apply(),
+            _ => self.parse_lhs(),
         }
     }
 
@@ -207,7 +206,6 @@ impl Parser {
             eqts.push(eqt);
         }
         Ok(eqts)
-        // Ok(vec![("x".to_string(), ast::Expr::ENum(42))])
     }
 
     fn parse_eqt(&mut self) -> Result<Option<ast::LetEq>> {
@@ -296,6 +294,71 @@ impl Parser {
         let expr = try!(self.parse_expr());
         Ok(ast::Expr::ELam(args, Box::new(expr)))
     }
+
+    fn parse_lhs(&mut self) -> Result<ast::Expr> {
+        let lhs = try!(self.parse_apply());
+        self.parse_binop_rhs(lhs, 40)
+    }
+
+    fn parse_binop_rhs(&mut self, mut lhs: ast::Expr, min_precedence: u8) -> Result<ast::Expr> {
+        while self.is_binop_and_ge(min_precedence) {
+            let op = self.get_op();
+            self.bump();
+            let mut rhs = try!(self.parse_apply());
+            while self.lookahead(op) {
+                let min = get_precedence(self.get_op());
+                rhs = try!(self.parse_binop_rhs(rhs, min));
+            }
+            lhs = apply_binop(op, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn lookahead(&self, op: BinOpToken) -> bool {
+        match self.curr_token {
+            Some(Token::BinOp(binop)) => get_precedence(binop) > get_precedence(op),
+            _ => false,
+        }
+    }
+
+    fn get_op(&self) -> BinOpToken {
+        match self.curr_token {
+            Some(Token::BinOp(binop)) => binop,
+            _ => unreachable!(),
+        }
+    }
+
+    fn is_binop_and_ge(&self, min: u8) -> bool {
+        match self.curr_token {
+            Some(Token::BinOp(binop)) => get_precedence(binop) >= min,
+            _ => false,
+        }
+    }
+}
+
+fn get_precedence(binop: BinOpToken) -> u8 {
+    match binop {
+        BinOpToken::Lt | BinOpToken::Le | BinOpToken::Gt | BinOpToken::Ge | BinOpToken::EqEq => 40,
+        BinOpToken::Plus | BinOpToken::Minus => 50,
+        BinOpToken::Star | BinOpToken::Slash => 60,
+    }
+}
+
+fn apply_binop(op: BinOpToken, lhs: ast::Expr, rhs: ast::Expr) -> ast::Expr {
+    let evar_op = ast::Expr::EVar(match op {
+                                      BinOpToken::Plus => "+",
+                                      BinOpToken::Minus => "-",
+                                      BinOpToken::Star => "*",
+                                      BinOpToken::Slash => "/",
+                                      BinOpToken::Lt => "<",
+                                      BinOpToken::Le => "<=",
+                                      BinOpToken::Gt => ">",
+                                      BinOpToken::Ge => ">=",
+                                      BinOpToken::EqEq => "==",
+                                  }
+                                  .to_string());
+    ast::Expr::EAp(Box::new(ast::Expr::EAp(Box::new(evar_op), Box::new(lhs))),
+                   Box::new(rhs))
 }
 
 #[derive(Debug)]

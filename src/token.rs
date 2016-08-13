@@ -22,7 +22,7 @@ pub enum Lit {
     Integer(i64),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOpToken {
     Plus,
     Minus,
@@ -35,7 +35,7 @@ pub enum BinOpToken {
     EqEq,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Key {
     Let,
     Letrec,
