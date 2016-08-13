@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Heap<T> {
     used: Vec<Option<T>>,
     free: Vec<Addr>,

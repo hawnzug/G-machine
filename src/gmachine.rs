@@ -1,9 +1,12 @@
 use ast::Name;
 use ast::Program;
+use ast::ScDef;
+use ast::Expr;
 use heap::*;
 
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub struct GmState {
     code: GmCode,
     stack: GmStack,
@@ -23,38 +26,180 @@ enum Instruction {
     Unwind,
     PushGlobal(Name),
     Pushint(i64),
-    Push(u32),
+    Push(usize),
     Mkap,
-    Update(u32),
-    Pop(u32),
+    Update(usize),
+    Pop(usize),
 }
 
 #[derive(Debug, Clone)]
 enum Node {
     NNum(i64),
     NAp(Addr, Addr),
-    NGlobal(u32, GmCode),
+    NGlobal(usize, GmCode),
     NInd(Addr),
 }
 
-#[allow(unused_variables)]
 pub fn compile(prog: Program) -> GmState {
-    GmState::new()
+    let init_code = vec![Instruction::Unwind, Instruction::PushGlobal("main".to_string())];
+    let (heap, globals) = build_initial_heap(prog);
+    GmState {
+        code: init_code,
+        stack: Vec::new(),
+        heap: heap,
+        globals: globals,
+        stats: 0,
+    }
 }
 
-#[allow(unused_variables)]
-pub fn eval(state: GmState) -> GmState {
-    GmState::new()
+fn build_initial_heap(prog: Program) -> (GmHeap, GmGlobals) {
+    let mut heap = Heap::new();
+    let mut globals = HashMap::new();
+    for scdef in prog {
+        let (name, nargs, code) = compile_sc(scdef);
+        let addr = heap.alloc(Node::NGlobal(nargs, code));
+        globals.insert(name, addr);
+    }
+    (heap, globals)
+}
+
+type GmEnvironment = HashMap<Name, usize>;
+
+fn compile_sc(scdef: ScDef) -> (Name, usize, GmCode) {
+    let len = scdef.args.len();
+    let mut env: GmEnvironment = HashMap::new();
+    for (i, arg) in scdef.args.into_iter().enumerate() {
+        env.insert(arg, i);
+    }
+    (scdef.name, len, compile_r(scdef.body, env))
+}
+
+fn compile_r(expr: Expr, env: GmEnvironment) -> GmCode {
+    let d = env.len();
+    let mut compiled = compile_c(expr, env);
+    let mut init = vec![Instruction::Unwind, Instruction::Pop(d), Instruction::Update(d)];
+    init.append(&mut compiled);
+    init
+}
+
+fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
+    match expr {
+        Expr::EVar(name) => {
+            if env.contains_key(&name) {
+                vec![Instruction::Push(env[&name])]
+            } else {
+                vec![Instruction::PushGlobal(name)]
+            }
+        }
+        Expr::ENum(n) => vec![Instruction::Pushint(n)],
+        Expr::EAp(box_e1, box_e2) => {
+            let mut new_env = env.clone();
+            for i in new_env.values_mut() {
+                *i += 1;
+            }
+            let mut init = vec![Instruction::Mkap];
+            let mut compiled1 = compile_c(*box_e1, new_env);
+            let mut compiled2 = compile_c(*box_e2, env);
+            init.append(&mut compiled1);
+            init.append(&mut compiled2);
+            init
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn is_final(state: &GmState) -> bool {
+    state.code.is_empty()
+}
+
+pub fn eval(mut state: GmState) -> GmState {
+    if is_final(&state) {
+        state
+    } else {
+        state.step();
+        eval(state)
+    }
 }
 
 impl GmState {
-    pub fn new() -> Self {
-        GmState {
-            code: Vec::new(),
-            stack: Vec::new(),
-            heap: Heap::new(),
-            globals: HashMap::new(),
-            stats: 0,
+    pub fn temp_step(&mut self) {
+        self.stats += 1;
+    }
+
+    pub fn step(&mut self) {
+        self.stats += 1;
+        assert!(!self.code.is_empty());
+        let instr = self.code.pop().unwrap();
+        self.dispatch(instr);
+    }
+
+    fn dispatch(&mut self, instr: Instruction) {
+        match instr {
+            Instruction::PushGlobal(f) => self.pushglobal(f),
+            Instruction::Pushint(n) => self.pushint(n),
+            Instruction::Mkap => self.mkap(),
+            Instruction::Push(n) => self.push(n),
+            Instruction::Update(n) => self.update(n),
+            Instruction::Pop(n) => self.pop(n),
+            Instruction::Unwind => self.unwind(),
         }
+    }
+
+    fn pushglobal(&mut self, f: Name) {
+        let addr = self.globals.get(&f).unwrap();
+        self.stack.push(*addr);
+    }
+
+    fn pushint(&mut self, n: i64) {
+        let addr = self.heap.alloc(Node::NNum(n));
+        self.stack.push(addr);
+    }
+
+    fn mkap(&mut self) {
+        let addr1 = self.stack.pop().unwrap();
+        let addr2 = self.stack.pop().unwrap();
+        let addr = self.heap.alloc(Node::NAp(addr1, addr2));
+        self.stack.push(addr);
+    }
+
+    fn push(&mut self, n: usize) {
+        let addr = self.stack[self.stack.len() - n - 2];
+        self.stack.push(get_arg(self.heap.lookup(addr).unwrap()));
+    }
+
+    fn update(&mut self, n: usize) {
+        let a = self.stack[self.stack.len() - 1];
+        let an = self.stack[self.stack.len() - n - 2];
+        self.heap.update(an, Node::NInd(a));
+        self.stack.pop();
+    }
+
+    fn pop(&mut self, n: usize) {
+        let i = self.stack.len() - n;
+        self.stack.truncate(i);
+    }
+
+    fn unwind(&mut self) {
+        let addr = self.stack[self.stack.len() - 1];
+        match self.heap.lookup(addr).unwrap() {
+            Node::NNum(_) => {}
+            Node::NInd(i) => {
+                self.code.push(Instruction::Unwind);
+                self.stack.pop();
+                self.stack.push(i);
+            }
+            Node::NAp(a, _) => {
+                self.code.push(Instruction::Unwind);
+                self.stack.push(a);
+            }
+            Node::NGlobal(_, c) => self.code = c,
+        }
+    }
+}
+
+fn get_arg(node: Node) -> Addr {
+    match node {
+        Node::NAp(_, addr) => addr,
+        _ => unreachable!(),
     }
 }
