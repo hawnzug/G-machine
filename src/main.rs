@@ -4,6 +4,7 @@ mod printer;
 mod gmachine;
 mod lexer;
 mod token;
+mod heap;
 
 use std::env;
 use std::path::Path;
