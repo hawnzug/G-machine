@@ -75,9 +75,10 @@ fn compile_sc(scdef: ScDef) -> (Name, usize, GmCode) {
 }
 
 fn compile_r(expr: Expr, env: GmEnvironment) -> GmCode {
-    let d = env.len();
+    let mut init = vec![Instruction::Unwind,
+                        Instruction::Pop(env.len()),
+                        Instruction::Update(env.len())];
     let mut compiled = compile_c(expr, env);
-    let mut init = vec![Instruction::Unwind, Instruction::Pop(d), Instruction::Update(d)];
     init.append(&mut compiled);
     init
 }
@@ -93,13 +94,10 @@ fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
         }
         Expr::ENum(n) => vec![Instruction::Pushint(n)],
         Expr::EAp(box_e1, box_e2) => {
-            let mut new_env = env.clone();
-            for i in new_env.values_mut() {
-                *i += 1;
-            }
-            let mut init = vec![Instruction::Mkap];
+            let new_env = env.clone().into_iter().map(|(name, i)| (name, i + 1)).collect();
             let mut compiled1 = compile_c(*box_e1, new_env);
             let mut compiled2 = compile_c(*box_e2, env);
+            let mut init = vec![Instruction::Mkap];
             init.append(&mut compiled1);
             init.append(&mut compiled2);
             init
@@ -113,22 +111,15 @@ fn is_final(state: &GmState) -> bool {
 }
 
 pub fn eval(mut state: GmState) -> GmState {
-    if is_final(&state) {
-        state
-    } else {
+    while !is_final(&state) {
         state.step();
-        eval(state)
     }
+    state
 }
 
 impl GmState {
-    pub fn temp_step(&mut self) {
-        self.stats += 1;
-    }
-
     pub fn step(&mut self) {
         self.stats += 1;
-        assert!(!self.code.is_empty());
         let instr = self.code.pop().unwrap();
         self.dispatch(instr);
     }
@@ -145,8 +136,8 @@ impl GmState {
         }
     }
 
-    fn pushglobal(&mut self, f: Name) {
-        let addr = self.globals.get(&f).unwrap();
+    fn pushglobal(&mut self, name: Name) {
+        let addr = self.globals.get(&name).unwrap();
         self.stack.push(*addr);
     }
 
@@ -163,8 +154,8 @@ impl GmState {
     }
 
     fn push(&mut self, n: usize) {
-        let addr = self.stack[self.stack.len() - n - 2];
-        self.stack.push(get_arg(self.heap.lookup(addr).unwrap()));
+        let addr = self.stack[self.stack.len() - n - 1];
+        self.stack.push(addr);
     }
 
     fn update(&mut self, n: usize) {
@@ -192,7 +183,14 @@ impl GmState {
                 self.code.push(Instruction::Unwind);
                 self.stack.push(a);
             }
-            Node::NGlobal(_, c) => self.code = c,
+            Node::NGlobal(n, c) => {
+                self.code = c;
+                let len = self.stack.len();
+                for i in 0..n {
+                    let j = len - 1 - i;
+                    self.stack[j] = get_arg(self.heap.lookup(self.stack[j - 1]).unwrap());
+                }
+            }
         }
     }
 }
