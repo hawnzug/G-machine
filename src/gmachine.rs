@@ -2,6 +2,7 @@ use ast::Name;
 use ast::Program;
 use ast::ScDef;
 use ast::Expr;
+use ast::LetEq;
 use heap::*;
 
 use std::collections::HashMap;
@@ -30,6 +31,8 @@ enum Instruction {
     Mkap,
     Update(usize),
     Pop(usize),
+    Slide(usize),
+    Alloc(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -102,8 +105,50 @@ fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
             init.append(&mut compiled2);
             init
         }
+        Expr::ELet(defs, box_expr) => compile_let(defs, *box_expr, env),
+        Expr::ELetrec(defs, box_expr) => compile_letrec(defs, *box_expr, env),
         _ => unreachable!(),
     }
+}
+
+fn compile_let(defs: Vec<LetEq>, expr: Expr, env: GmEnvironment) -> GmCode {
+    let len = defs.len();
+    let mut code = vec![Instruction::Slide(len)];
+    let mut new_env: GmEnvironment = env.clone()
+                                        .into_iter()
+                                        .map(|(name, i)| (name, i + len))
+                                        .collect();
+    for (i, pair) in defs.iter().enumerate() {
+        new_env.insert(pair.0.clone(), len - i - 1);
+    }
+    let mut code_expr = compile_c(expr, new_env);
+    code.append(&mut code_expr);
+    for (n, (name, e)) in defs.into_iter().enumerate().rev() {
+        let new_env = env.clone().into_iter().map(|(name, i)| (name, i + n)).collect();
+        code.append(&mut compile_c(e, new_env));
+    }
+    code
+}
+
+fn compile_letrec(defs: Vec<LetEq>, expr: Expr, env: GmEnvironment) -> GmCode {
+    let len = defs.len();
+    let mut code = vec![Instruction::Slide(len)];
+    let mut new_env: GmEnvironment = env.into_iter()
+                                        .map(|(name, i)| (name, i + len))
+                                        .collect();
+    for (i, pair) in defs.iter().enumerate() {
+        new_env.insert(pair.0.clone(), len - i - 1);
+    }
+    let new_env_clone = new_env.clone();
+    let mut code_expr = compile_c(expr, new_env);
+    code.append(&mut code_expr);
+    for (n, (_, e)) in defs.into_iter().enumerate().rev() {
+        let new_env = new_env_clone.clone();
+        code.push(Instruction::Update(n));
+        code.append(&mut compile_c(e, new_env));
+    }
+    code.push(Instruction::Alloc(len));
+    code
 }
 
 fn is_final(state: &GmState) -> bool {
@@ -133,6 +178,8 @@ impl GmState {
             Instruction::Update(n) => self.update(n),
             Instruction::Pop(n) => self.pop(n),
             Instruction::Unwind => self.unwind(),
+            Instruction::Slide(n) => self.slide(n),
+            Instruction::Alloc(n) => self.alloc(n),
         }
     }
 
@@ -191,6 +238,20 @@ impl GmState {
                     self.stack[j] = get_arg(self.heap.lookup(self.stack[j - 1]).unwrap());
                 }
             }
+        }
+    }
+
+    fn slide(&mut self, n: usize) {
+        let len = self.stack.len();
+        let top = self.stack[len - 1];
+        self.stack.truncate(len - n - 1);
+        self.stack.push(top);
+    }
+
+    fn alloc(&mut self, n: usize) {
+        for _ in 0..n {
+            let addr = self.heap.alloc(Node::NInd(0));
+            self.stack.push(addr);
         }
     }
 }
