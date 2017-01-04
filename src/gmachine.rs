@@ -78,9 +78,8 @@ fn compile_sc(scdef: ScDef) -> (Name, usize, GmCode) {
 }
 
 fn compile_r(expr: Expr, env: GmEnvironment) -> GmCode {
-    let mut init = vec![Instruction::Unwind,
-                        Instruction::Pop(env.len()),
-                        Instruction::Update(env.len())];
+    let mut init =
+        vec![Instruction::Unwind, Instruction::Pop(env.len()), Instruction::Update(env.len())];
     let mut compiled = compile_c(expr, env);
     init.append(&mut compiled);
     init
@@ -115,9 +114,9 @@ fn compile_let(defs: Vec<LetEq>, expr: Expr, env: GmEnvironment) -> GmCode {
     let len = defs.len();
     let mut code = vec![Instruction::Slide(len)];
     let mut new_env: GmEnvironment = env.clone()
-                                        .into_iter()
-                                        .map(|(name, i)| (name, i + len))
-                                        .collect();
+        .into_iter()
+        .map(|(name, i)| (name, i + len))
+        .collect();
     for (i, pair) in defs.iter().enumerate() {
         new_env.insert(pair.0.clone(), len - i - 1);
     }
@@ -134,8 +133,8 @@ fn compile_letrec(defs: Vec<LetEq>, expr: Expr, env: GmEnvironment) -> GmCode {
     let len = defs.len();
     let mut code = vec![Instruction::Slide(len)];
     let mut new_env: GmEnvironment = env.into_iter()
-                                        .map(|(name, i)| (name, i + len))
-                                        .collect();
+        .map(|(name, i)| (name, i + len))
+        .collect();
     for (i, pair) in defs.iter().enumerate() {
         new_env.insert(pair.0.clone(), len - i - 1);
     }

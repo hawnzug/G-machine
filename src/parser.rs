@@ -18,7 +18,7 @@ pub type Result<T> = result::Result<T, ParseError>;
 
 pub fn parse<P: AsRef<Path>>(file_path: P) -> Result<Program> {
     let mut parser = Parser {
-        tokens: try!(lexer::tokenize(file_path)),
+        tokens: lexer::tokenize(file_path)?,
         curr_index: 0,
         curr_token: None,
     };
@@ -124,12 +124,12 @@ impl Parser {
     }
 
     fn parse_apply(&mut self) -> Result<Expr> {
-        let mut aps = if let Some(expr) = try!(self.parse_primary()) {
+        let mut aps = if let Some(expr) = self.parse_primary()? {
             expr
         } else {
             return Err(ParseError::PlaceHolder);
         };
-        while let Some(expr) = try!(self.parse_primary()) {
+        while let Some(expr) = self.parse_primary()? {
             aps = Expr::EAp(Box::new(aps), Box::new(expr));
         }
         Ok(aps)
@@ -175,7 +175,7 @@ impl Parser {
 
     fn parse_paren(&mut self) -> Result<Expr> {
         self.bump();
-        let expr = try!(self.parse_expr());
+        let expr = self.parse_expr()?;
         if Some(Token::CloseParen) == self.curr_token {
             self.bump();
             Ok(expr)
@@ -186,13 +186,13 @@ impl Parser {
 
     fn parse_let(&mut self, is_rec: bool) -> Result<Expr> {
         self.bump();
-        let eqts = try!(self.parse_eqts());
+        let eqts = self.parse_eqts()?;
         if Some(Token::Keyword(Key::In)) == self.curr_token {
             self.bump();
         } else {
             return Err(ParseError::PlaceHolder);
         }
-        let body = try!(self.parse_expr());
+        let body = self.parse_expr()?;
         if is_rec {
             Ok(Expr::ELetrec(eqts, Box::new(body)))
         } else {
@@ -202,7 +202,7 @@ impl Parser {
 
     fn parse_eqts(&mut self) -> Result<Vec<LetEq>> {
         let mut eqts = Vec::new();
-        while let Some(eqt) = try!(self.parse_eqt()) {
+        while let Some(eqt) = self.parse_eqt()? {
             eqts.push(eqt);
         }
         Ok(eqts)
@@ -222,7 +222,7 @@ impl Parser {
         } else {
             return Err(ParseError::PlaceHolder);
         }
-        let body = try!(self.parse_expr());
+        let body = self.parse_expr()?;
         if Some(Token::Semi) == self.curr_token {
             self.bump();
         } else {
@@ -233,19 +233,19 @@ impl Parser {
 
     fn parse_case(&mut self) -> Result<Expr> {
         self.bump();
-        let expr = try!(self.parse_expr());
+        let expr = self.parse_expr()?;
         if Some(Token::Keyword(Key::Of)) == self.curr_token {
             self.bump();
         } else {
             return Err(ParseError::PlaceHolder);
         }
-        let alters = try!(self.parse_alters());
+        let alters = self.parse_alters()?;
         Ok(Expr::ECase(Box::new(expr), alters))
     }
 
     fn parse_alters(&mut self) -> Result<Vec<Alter>> {
         let mut alts = Vec::new();
-        while let Some(alt) = try!(self.parse_alt()) {
+        while let Some(alt) = self.parse_alt()? {
             alts.push(alt);
         }
         Ok(alts)
@@ -276,7 +276,7 @@ impl Parser {
         } else {
             return Err(ParseError::PlaceHolder);
         }
-        let body = try!(self.parse_expr());
+        let body = self.parse_expr()?;
         Ok(Some((n, binds, body)))
     }
 
@@ -291,12 +291,12 @@ impl Parser {
         } else {
             return Err(ParseError::PlaceHolder);
         }
-        let expr = try!(self.parse_expr());
+        let expr = self.parse_expr()?;
         Ok(Expr::ELam(args, Box::new(expr)))
     }
 
     fn parse_lhs(&mut self) -> Result<Expr> {
-        let lhs = try!(self.parse_apply());
+        let lhs = self.parse_apply()?;
         self.parse_binop_rhs(lhs, 40)
     }
 
@@ -304,10 +304,10 @@ impl Parser {
         while self.is_binop_and_ge(min_precedence) {
             let op = self.get_op();
             self.bump();
-            let mut rhs = try!(self.parse_apply());
+            let mut rhs = self.parse_apply()?;
             while self.lookahead(op) {
                 let min = get_precedence(self.get_op());
-                rhs = try!(self.parse_binop_rhs(rhs, min));
+                rhs = self.parse_binop_rhs(rhs, min)?;
             }
             lhs = apply_binop(op, lhs, rhs);
         }
@@ -346,17 +346,17 @@ fn get_precedence(binop: BinOpToken) -> u8 {
 
 fn apply_binop(op: BinOpToken, lhs: Expr, rhs: Expr) -> Expr {
     let evar_op = Expr::EVar(match op {
-                                 BinOpToken::Plus => "+",
-                                 BinOpToken::Minus => "-",
-                                 BinOpToken::Star => "*",
-                                 BinOpToken::Slash => "/",
-                                 BinOpToken::Lt => "<",
-                                 BinOpToken::Le => "<=",
-                                 BinOpToken::Gt => ">",
-                                 BinOpToken::Ge => ">=",
-                                 BinOpToken::EqEq => "==",
-                             }
-                             .to_string());
+            BinOpToken::Plus => "+",
+            BinOpToken::Minus => "-",
+            BinOpToken::Star => "*",
+            BinOpToken::Slash => "/",
+            BinOpToken::Lt => "<",
+            BinOpToken::Le => "<=",
+            BinOpToken::Gt => ">",
+            BinOpToken::Ge => ">=",
+            BinOpToken::EqEq => "==",
+        }
+        .to_string());
     Expr::EAp(Box::new(Expr::EAp(Box::new(evar_op), Box::new(lhs))),
               Box::new(rhs))
 }

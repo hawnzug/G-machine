@@ -10,9 +10,9 @@ use std::error;
 use std::io;
 
 pub fn tokenize<P: AsRef<Path>>(file_path: P) -> Result<Vec<TokenAndPos>, LexError> {
-    let mut file = try!(File::open(file_path));
+    let mut file = File::open(file_path)?;
     let mut content: String = String::new();
-    try!(file.read_to_string(&mut content));
+    file.read_to_string(&mut content)?;
     let file_reader = StringReader {
         pos: Pos::new(1, 0),
         iter: content.chars(),
@@ -88,7 +88,7 @@ impl<'a> StringReader<'a> {
                             _ => break,
                         }
                     }
-                    let n = try!(number.parse());
+                    let n = number.parse()?;
                     tokens.push(TokenAndPos {
                         token: Token::Literal(Lit::Integer(n)),
                         pos: start,
