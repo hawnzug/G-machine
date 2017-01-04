@@ -3,7 +3,7 @@ use ast::Program;
 use ast::ScDef;
 use ast::Expr;
 use ast::LetEq;
-use heap::*;
+use heap::{Heap, Addr};
 
 use std::collections::HashMap;
 
@@ -44,7 +44,7 @@ enum Node {
 }
 
 pub fn compile(prog: Program) -> GmState {
-    let init_code = vec![Instruction::Unwind, Instruction::PushGlobal("main".to_string())];
+    let init_code = vec![Instruction::Unwind, Instruction::PushGlobal(String::from("main"))];
     let (heap, globals) = build_initial_heap(prog);
     GmState {
         code: init_code,
@@ -66,7 +66,7 @@ fn build_initial_heap(prog: Program) -> (GmHeap, GmGlobals) {
     (heap, globals)
 }
 
-type GmEnvironment = HashMap<Name, usize>;
+type GmEnvironment = HashMap<Name, Addr>;
 
 fn compile_sc(scdef: ScDef) -> (Name, usize, GmCode) {
     let len = scdef.args.len();
@@ -122,7 +122,7 @@ fn compile_let(defs: Vec<LetEq>, expr: Expr, env: GmEnvironment) -> GmCode {
     }
     let mut code_expr = compile_c(expr, new_env);
     code.append(&mut code_expr);
-    for (n, (name, e)) in defs.into_iter().enumerate().rev() {
+    for (n, (_, e)) in defs.into_iter().enumerate().rev() {
         let new_env = env.clone().into_iter().map(|(name, i)| (name, i + n)).collect();
         code.append(&mut compile_c(e, new_env));
     }

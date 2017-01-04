@@ -276,29 +276,3 @@ impl From<io::Error> for LexError {
         LexError::FileToString(err)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use token::*;
-
-    fn prepare(s: &str) -> Lexer {
-        let file_reader = StringReader {
-            pos: Pos::new(1, 0),
-            iter: s.chars(),
-            curr: None,
-        };
-        let tokens = file_reader.tokenize().unwrap();
-        Lexer {
-            tokens: tokens,
-            curr_index: 0,
-        }
-    }
-
-    #[test]
-    fn integer() {
-        let mut lex = prepare("123456");
-        assert_eq!(Some(&Token::Literal(Lit::Integer(123456))),
-                   lex.current_token());
-    }
-}

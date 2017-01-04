@@ -15,11 +15,7 @@ impl<T: Clone> Heap<T> {
     }
 
     pub fn lookup(&self, addr: Addr) -> Option<T> {
-        if self.used.len() > addr {
-            self.used[addr].clone()
-        } else {
-            None
-        }
+        self.used.get(addr).map(|t| t.clone()).unwrap_or(None)
     }
 
     pub fn alloc(&mut self, t: T) -> Addr {
@@ -37,11 +33,13 @@ impl<T: Clone> Heap<T> {
         self.used[addr] = Some(t);
     }
 
+    #[allow(dead_code)]
     pub fn free(&mut self, addr: Addr) {
         self.used[addr] = None;
         self.free.push(addr);
     }
 
+    #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.used.len() - self.free.len()
     }
