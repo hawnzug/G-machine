@@ -183,8 +183,8 @@ impl GmState {
     }
 
     fn pushglobal(&mut self, name: Name) {
-        let addr = self.globals.get(&name).unwrap();
-        self.stack.push(*addr);
+        let addr = self.globals[&name];
+        self.stack.push(addr);
     }
 
     fn pushint(&mut self, n: i64) {

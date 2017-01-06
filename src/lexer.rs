@@ -46,7 +46,6 @@ impl<'a> StringReader<'a> {
                 break;
             }
             match self.curr.unwrap() {
-                ' ' => self.bump(),
                 '\r' => {
                     self.bump();
                     if self.curr != Some('\n') {

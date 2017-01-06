@@ -15,7 +15,7 @@ impl<T: Clone> Heap<T> {
     }
 
     pub fn lookup(&self, addr: Addr) -> Option<T> {
-        self.used.get(addr).map(|t| t.clone()).unwrap_or(None)
+        self.used.get(addr).cloned().unwrap_or(None)
     }
 
     pub fn alloc(&mut self, t: T) -> Addr {
