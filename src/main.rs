@@ -25,7 +25,6 @@ fn main() {
 fn run_prog<P: AsRef<Path>>(file_path: P) {
     match parse(file_path) {
         Ok(prog) => {
-            println!("{:#?}", prog);
             show_result(eval(compile(prog)));
         }
         Err(err) => println!("{}", err),

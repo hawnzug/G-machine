@@ -100,13 +100,14 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr> {
-        match self.curr_token {
+        let lhs = match self.curr_token {
             Some(Token::Keyword(Key::Let)) => self.parse_let(false),
             Some(Token::Keyword(Key::Letrec)) => self.parse_let(true),
             Some(Token::Keyword(Key::Case)) => self.parse_case(),
             Some(Token::BackSlash) => self.parse_lambda(),
-            _ => self.parse_lhs(),
-        }
+            _ => self.parse_apply(),
+        }?;
+        self.parse_binop_rhs(lhs, 40)
     }
 
     fn parse_primary(&mut self) -> Result<Option<Expr>> {
@@ -300,16 +301,11 @@ impl Parser {
         Ok(Expr::ELam(args, Box::new(expr)))
     }
 
-    fn parse_lhs(&mut self) -> Result<Expr> {
-        let lhs = self.parse_apply()?;
-        self.parse_binop_rhs(lhs, 40)
-    }
-
     fn parse_binop_rhs(&mut self, mut lhs: Expr, min_precedence: u8) -> Result<Expr> {
         while self.is_binop_and_ge(min_precedence) {
             let op = self.get_op();
             self.bump();
-            let mut rhs = self.parse_apply()?;
+            let mut rhs = self.parse_expr()?;
             while self.lookahead(op) {
                 let min = get_precedence(self.get_op());
                 rhs = self.parse_binop_rhs(rhs, min)?;
