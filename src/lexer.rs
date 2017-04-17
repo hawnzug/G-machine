@@ -70,7 +70,7 @@ impl<'a> StringReader<'a> {
                                         "case" => Token::Keyword(Key::Case),
                                         "in" => Token::Keyword(Key::In),
                                         "of" => Token::Keyword(Key::Of),
-                                        "pack" => Token::Keyword(Key::Pack),
+                                        "Pack" => Token::Keyword(Key::Pack),
                                         _ => Token::Ident(ident),
                                     },
                                     pos: start,
