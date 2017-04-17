@@ -64,17 +64,17 @@ impl<'a> StringReader<'a> {
                         }
                     }
                     tokens.push(TokenAndPos {
-                        token: match ident.as_str() {
-                            "let" => Token::Keyword(Key::Let),
-                            "letrec" => Token::Keyword(Key::Letrec),
-                            "case" => Token::Keyword(Key::Case),
-                            "in" => Token::Keyword(Key::In),
-                            "of" => Token::Keyword(Key::Of),
-                            "pack" => Token::Keyword(Key::Pack),
-                            _ => Token::Ident(ident),
-                        },
-                        pos: start,
-                    });
+                                    token: match ident.as_str() {
+                                        "let" => Token::Keyword(Key::Let),
+                                        "letrec" => Token::Keyword(Key::Letrec),
+                                        "case" => Token::Keyword(Key::Case),
+                                        "in" => Token::Keyword(Key::In),
+                                        "of" => Token::Keyword(Key::Of),
+                                        "pack" => Token::Keyword(Key::Pack),
+                                        _ => Token::Ident(ident),
+                                    },
+                                    pos: start,
+                                });
                 }
                 c if c.is_digit(10) => {
                     let mut number = String::new();
@@ -89,138 +89,138 @@ impl<'a> StringReader<'a> {
                     }
                     let n = number.parse()?;
                     tokens.push(TokenAndPos {
-                        token: Token::Literal(Lit::Integer(n)),
-                        pos: start,
-                    });
+                                    token: Token::Literal(Lit::Integer(n)),
+                                    pos: start,
+                                });
                 }
                 '(' => {
                     tokens.push(TokenAndPos {
-                        token: Token::OpenParen,
-                        pos: self.pos,
-                    });
+                                    token: Token::OpenParen,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 ')' => {
                     tokens.push(TokenAndPos {
-                        token: Token::CloseParen,
-                        pos: self.pos,
-                    });
+                                    token: Token::CloseParen,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '{' => {
                     tokens.push(TokenAndPos {
-                        token: Token::OpenBrace,
-                        pos: self.pos,
-                    });
+                                    token: Token::OpenBrace,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '}' => {
                     tokens.push(TokenAndPos {
-                        token: Token::CloseBrace,
-                        pos: self.pos,
-                    });
+                                    token: Token::CloseBrace,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '\\' => {
                     tokens.push(TokenAndPos {
-                        token: Token::BackSlash,
-                        pos: self.pos,
-                    });
+                                    token: Token::BackSlash,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '.' => {
                     tokens.push(TokenAndPos {
-                        token: Token::Dot,
-                        pos: self.pos,
-                    });
+                                    token: Token::Dot,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 ';' => {
                     tokens.push(TokenAndPos {
-                        token: Token::Semi,
-                        pos: self.pos,
-                    });
+                                    token: Token::Semi,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 ',' => {
                     tokens.push(TokenAndPos {
-                        token: Token::Comma,
-                        pos: self.pos,
-                    });
+                                    token: Token::Comma,
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '+' => {
                     tokens.push(TokenAndPos {
-                        token: Token::BinOp(BinOpToken::Plus),
-                        pos: self.pos,
-                    });
+                                    token: Token::BinOp(BinOpToken::Plus),
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '-' => {
                     let start = self.pos;
                     self.bump();
                     tokens.push(TokenAndPos {
-                        token: if self.curr == Some('>') {
-                            self.bump();
-                            Token::RightArrow
-                        } else {
-                            Token::BinOp(BinOpToken::Minus)
-                        },
-                        pos: start,
-                    });
+                                    token: if self.curr == Some('>') {
+                                        self.bump();
+                                        Token::RightArrow
+                                    } else {
+                                        Token::BinOp(BinOpToken::Minus)
+                                    },
+                                    pos: start,
+                                });
                 }
                 '*' => {
                     tokens.push(TokenAndPos {
-                        token: Token::BinOp(BinOpToken::Star),
-                        pos: self.pos,
-                    });
+                                    token: Token::BinOp(BinOpToken::Star),
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '/' => {
                     tokens.push(TokenAndPos {
-                        token: Token::BinOp(BinOpToken::Slash),
-                        pos: self.pos,
-                    });
+                                    token: Token::BinOp(BinOpToken::Slash),
+                                    pos: self.pos,
+                                });
                     self.bump();
                 }
                 '=' => {
                     let start = self.pos;
                     self.bump();
                     tokens.push(TokenAndPos {
-                        token: if self.curr == Some('=') {
-                            self.bump();
-                            Token::BinOp(BinOpToken::EqEq)
-                        } else {
-                            Token::Equal
-                        },
-                        pos: start,
-                    })
+                                    token: if self.curr == Some('=') {
+                                        self.bump();
+                                        Token::BinOp(BinOpToken::EqEq)
+                                    } else {
+                                        Token::Equal
+                                    },
+                                    pos: start,
+                                })
                 }
                 '<' => {
                     let start = self.pos;
                     self.bump();
                     tokens.push(TokenAndPos {
-                        token: if self.curr == Some('=') {
-                            self.bump();
-                            Token::BinOp(BinOpToken::Le)
-                        } else {
-                            Token::BinOp(BinOpToken::Lt)
-                        },
-                        pos: start,
-                    })
+                                    token: if self.curr == Some('=') {
+                                        self.bump();
+                                        Token::BinOp(BinOpToken::Le)
+                                    } else {
+                                        Token::BinOp(BinOpToken::Lt)
+                                    },
+                                    pos: start,
+                                })
                 }
                 '>' => {
                     let start = self.pos;
                     self.bump();
                     tokens.push(TokenAndPos {
-                        token: if self.curr == Some('=') {
-                            self.bump();
-                            Token::BinOp(BinOpToken::Ge)
-                        } else {
-                            Token::BinOp(BinOpToken::Gt)
-                        },
-                        pos: start,
-                    })
+                                    token: if self.curr == Some('=') {
+                                        self.bump();
+                                        Token::BinOp(BinOpToken::Ge)
+                                    } else {
+                                        Token::BinOp(BinOpToken::Gt)
+                                    },
+                                    pos: start,
+                                })
                 }
                 _ => self.bump(),
             }

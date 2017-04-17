@@ -192,7 +192,10 @@ fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
         }
         Expr::ENum(n) => vec![Pushint(n)],
         Expr::EAp(box_e1, box_e2) => {
-            let new_env = env.clone().into_iter().map(|(name, i)| (name, i + 1)).collect();
+            let new_env = env.clone()
+                .into_iter()
+                .map(|(name, i)| (name, i + 1))
+                .collect();
             let mut compiled1 = compile_c(*box_e1, new_env);
             let mut compiled2 = compile_c(*box_e2, env);
             let mut init = vec![Mkap];
@@ -223,7 +226,10 @@ fn compile_let(defs: Vec<LetEq>, expr: Expr, env: GmEnvironment, context: Contex
     };
     code.append(&mut code_expr);
     for (n, (_, e)) in defs.into_iter().enumerate().rev() {
-        let new_env = env.clone().into_iter().map(|(name, i)| (name, i + n)).collect();
+        let new_env = env.clone()
+            .into_iter()
+            .map(|(name, i)| (name, i + n))
+            .collect();
         code.append(&mut compile_c(e, new_env));
     }
     code
@@ -406,12 +412,12 @@ impl GmState {
             panic!("not a number");
         };
         let result = NNum(match instr {
-            Add => n1 + n2,
-            Sub => n1 - n2,
-            Mul => n1 * n2,
-            Div => n1 / n2,
-            _ => unreachable!(),
-        });
+                              Add => n1 + n2,
+                              Sub => n1 - n2,
+                              Mul => n1 * n2,
+                              Div => n1 / n2,
+                              _ => unreachable!(),
+                          });
         let addr = self.heap.alloc(result);
         self.stack.push(addr);
     }

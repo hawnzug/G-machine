@@ -90,10 +90,10 @@ impl Parser {
         if self.curr_token == Some(Token::Semi) {
             self.bump();
             Ok(ScDef {
-                name: name,
-                args: args,
-                body: body,
-            })
+                   name: name,
+                   args: args,
+                   body: body,
+               })
         } else {
             Err(ParseError::PlaceHolder)
         }
@@ -346,17 +346,17 @@ fn get_precedence(binop: BinOpToken) -> u8 {
 
 fn apply_binop(op: BinOpToken, lhs: Expr, rhs: Expr) -> Expr {
     let evar_op = Expr::EVar(match op {
-            BinOpToken::Plus => "+",
-            BinOpToken::Minus => "-",
-            BinOpToken::Star => "*",
-            BinOpToken::Slash => "/",
-            BinOpToken::Lt => "<",
-            BinOpToken::Le => "<=",
-            BinOpToken::Gt => ">",
-            BinOpToken::Ge => ">=",
-            BinOpToken::EqEq => "==",
-        }
-        .to_string());
+                                     BinOpToken::Plus => "+",
+                                     BinOpToken::Minus => "-",
+                                     BinOpToken::Star => "*",
+                                     BinOpToken::Slash => "/",
+                                     BinOpToken::Lt => "<",
+                                     BinOpToken::Le => "<=",
+                                     BinOpToken::Gt => ">",
+                                     BinOpToken::Ge => ">=",
+                                     BinOpToken::EqEq => "==",
+                                 }
+                                 .to_string());
     Expr::EAp(Box::new(Expr::EAp(Box::new(evar_op), Box::new(lhs))),
               Box::new(rhs))
 }
