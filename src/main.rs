@@ -23,6 +23,11 @@ fn main() {
 }
 
 fn run_prog<P: AsRef<Path>>(file_path: P) {
-    let prog = parse(file_path).unwrap();
-    show_result(eval(compile(prog)));
+    match parse(file_path) {
+        Ok(prog) => {
+            println!("{:#?}", prog);
+            show_result(eval(compile(prog)));
+        }
+        Err(err) => println!("{}", err),
+    }
 }

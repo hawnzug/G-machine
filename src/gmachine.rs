@@ -6,6 +6,7 @@ use std::mem;
 
 #[derive(Debug)]
 pub struct GmState {
+    output: GmOutput,
     code: GmCode,
     stack: GmStack,
     dump: GmDump,
@@ -14,6 +15,7 @@ pub struct GmState {
     stats: GmStats,
 }
 
+type GmOutput = String;
 type GmCode = Vec<Instruction>;
 type GmStack = Vec<Addr>;
 type GmDump = Vec<GmDumpItem>;
@@ -39,6 +41,10 @@ enum Instruction {
     Mul,
     Div,
     Neg,
+    Pack(usize, usize),
+    Casejump(HashMap<usize, GmCode>),
+    Split(usize),
+    Print,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +53,7 @@ enum Node {
     NAp(Addr, Addr),
     NGlobal(usize, GmCode),
     NInd(Addr),
+    NConstr(usize, Vec<Addr>),
 }
 
 #[derive(Debug, Clone)]
@@ -56,10 +63,11 @@ enum Context {
 }
 
 pub fn compile(prog: Program) -> GmState {
-    use self::Instruction::{Eval, PushGlobal};
-    let init_code = vec![Eval, PushGlobal(String::from("main"))];
+    use self::Instruction::{Eval, PushGlobal, Print};
+    let init_code = vec![Print, Eval, PushGlobal(String::from("main"))];
     let (heap, globals) = build_initial_heap(prog);
     GmState {
+        output: String::new(),
         code: init_code,
         stack: Vec::new(),
         dump: Vec::new(),
@@ -99,7 +107,7 @@ fn build_initial_heap(prog: Program) -> (GmHeap, GmGlobals) {
     (heap, globals)
 }
 
-type GmEnvironment = HashMap<Name, Addr>;
+type GmEnvironment = HashMap<Name, usize>;
 
 fn compile_sc(scdef: ScDef) -> (Name, usize, GmCode) {
     let len = scdef.args.len();
@@ -118,12 +126,80 @@ fn compile_r(expr: Expr, env: GmEnvironment) -> GmCode {
     init
 }
 
+enum Flat {
+    Pack(usize, usize, Vec<Expr>),
+    Other(Expr),
+}
+
+fn flatten(mut expr: Expr) -> Flat {
+    let mut flag = false;
+    {
+        let mut count: usize = 0;
+        let mut e = &expr;
+        while let &Expr::EAp(ref e1, _) = e {
+            count += 1;
+            e = e1;
+        }
+        if let &Expr::EConstr(_, a) = e {
+            flag = count == a;
+        }
+    }
+    if flag {
+        let mut v = Vec::new();
+        while let Expr::EAp(e1, e2) = expr {
+            v.push(*e2);
+            expr = *e1;
+        }
+        if let Expr::EConstr(t, a) = expr {
+            Flat::Pack(t, a, v)
+        } else {
+            unreachable!()
+        }
+    } else {
+        Flat::Other(expr)
+    }
+}
+
 fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
     use self::Instruction::*;
+    let expr = match flatten(expr) {
+        Flat::Other(expr) => expr,
+        Flat::Pack(t, a, v) => {
+            let mut init = vec![Pack(t, a)];
+            for (n, e) in v.into_iter().enumerate().rev() {
+                let new_env = env.clone()
+                    .into_iter()
+                    .map(|(name, i)| (name, i + n))
+                    .collect();
+                init.append(&mut compile_c(e, new_env));
+            }
+            return init;
+        }
+    };
     match expr {
         Expr::ENum(i) => vec![Pushint(i)],
         Expr::ELet(defs, box_expr) => compile_let(defs, *box_expr, env, Context::Strict),
         Expr::ELetrec(defs, box_expr) => compile_letrec(defs, *box_expr, env, Context::Strict),
+        Expr::ECase(e, alts) => {
+            let mut hm = HashMap::new();
+            for (t, names, body) in alts {
+                let n = names.len();
+                let mut code = vec![Slide(n)];
+                let mut new_env: GmEnvironment = env.clone()
+                    .into_iter()
+                    .map(|(name, i)| (name, i + n))
+                    .collect();
+                for (i, name) in names.into_iter().enumerate() {
+                    new_env.insert(name, i);
+                }
+                code.append(&mut compile_e(body, new_env));
+                code.push(Split(n));
+                hm.insert(t, code);
+            }
+            let mut init = vec![Casejump(hm)];
+            init.append(&mut compile_e(*e, env));
+            init
+        }
         _ => {
             let expr = if let Expr::EAp(e1, e2) = expr {
                 let temp = *e1;
@@ -181,7 +257,21 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
 }
 
 fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
-    use self::Instruction::{Push, PushGlobal, Pushint, Mkap};
+    use self::Instruction::{Push, PushGlobal, Pushint, Mkap, Pack};
+    let expr = match flatten(expr) {
+        Flat::Other(expr) => expr,
+        Flat::Pack(t, a, v) => {
+            let mut init = vec![Pack(t, a)];
+            for (n, e) in v.into_iter().enumerate().rev() {
+                let new_env = env.clone()
+                    .into_iter()
+                    .map(|(name, i)| (name, i + n))
+                    .collect();
+                init.append(&mut compile_c(e, new_env));
+            }
+            return init;
+        }
+    };
     match expr {
         Expr::EVar(name) => {
             if env.contains_key(&name) {
@@ -279,7 +369,7 @@ impl GmState {
     }
 
     pub fn show(&self) {
-        println!("{:#?}", self.heap.lookup(self.stack[0]).unwrap());
+        println!("{}", self.output);
     }
 
     fn dispatch(&mut self, instr: Instruction) {
@@ -297,6 +387,10 @@ impl GmState {
             Eval => self.eval(),
             d @ Add | d @ Sub | d @ Mul | d @ Div => self.dyadic(d),
             Neg => self.neg(),
+            Pack(t, n) => self.pack(t, n),
+            Casejump(hm) => self.casejump(hm),
+            Split(n) => self.split(n),
+            Print => self.print(),
         }
     }
 
@@ -338,7 +432,8 @@ impl GmState {
         use self::Instruction::Unwind;
         let addr = self.stack[self.stack.len() - 1];
         match self.heap.lookup(addr).unwrap() {
-            Node::NNum(_) => {
+            Node::NNum(_) |
+            Node::NConstr(_, _) => {
                 if let Some((old_code, old_stack)) = self.dump.pop() {
                     self.code = old_code;
                     self.stack = old_stack;
@@ -431,6 +526,55 @@ impl GmState {
         };
         let addr = self.heap.alloc(Node::NNum(-n));
         self.stack.push(addr);
+    }
+
+    fn pack(&mut self, t: usize, n: usize) {
+        if self.stack.len() < n {
+            panic!("Constructor has too few arguments");
+        }
+        let len = self.stack.len();
+        let addr = self.heap
+            .alloc(Node::NConstr(t, self.stack.drain(len - n..).rev().collect()));
+        self.stack.push(addr);
+    }
+
+    fn casejump(&mut self, mut hm: HashMap<usize, GmCode>) {
+        let addr = self.stack.last().unwrap();
+        if let Node::NConstr(t, _) = self.heap.lookup(*addr).unwrap() {
+            let mut code = hm.remove(&t).unwrap();
+            self.code.append(&mut code);
+        } else {
+            panic!("Expect a constructor");
+        }
+    }
+
+    fn split(&mut self, n: usize) {
+        let addr = self.stack.pop().unwrap();
+        if let Node::NConstr(_, ss) = self.heap.lookup(addr).unwrap() {
+            if ss.len() != n {
+                panic!("Split: n != constructor's arity")
+            }
+            self.stack.extend(ss.iter().rev());
+        } else {
+            panic!("Split: Expect a constructor");
+        }
+    }
+
+    fn print(&mut self) {
+        use self::Instruction::{Eval, Print};
+        let addr = self.stack.pop().unwrap();
+        match self.heap.lookup(addr).unwrap() {
+            Node::NNum(n) => self.output += &n.to_string(),
+            Node::NConstr(_, ss) => {
+                let n = ss.len();
+                self.stack.extend(ss.iter().rev());
+                for _ in 0..n {
+                    self.code.push(Print);
+                    self.code.push(Eval);
+                }
+            }
+            _ => panic!("Print error"),
+        }
     }
 }
 

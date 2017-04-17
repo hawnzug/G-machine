@@ -170,7 +170,7 @@ impl Parser {
         } else {
             return Err(ParseError::PlaceHolder);
         }
-        Ok(Expr::EConstr(x, y))
+        Ok(Expr::EConstr(x as usize, y as usize))
     }
 
     fn parse_paren(&mut self) -> Result<Expr> {
@@ -277,7 +277,12 @@ impl Parser {
             return Err(ParseError::PlaceHolder);
         }
         let body = self.parse_expr()?;
-        Ok(Some((n, binds, body)))
+        if Some(Token::Semi) == self.curr_token {
+            self.bump();
+        } else {
+            return Err(ParseError::PlaceHolder);
+        }
+        Ok(Some((n as usize, binds, body)))
     }
 
     fn parse_lambda(&mut self) -> Result<Expr> {
