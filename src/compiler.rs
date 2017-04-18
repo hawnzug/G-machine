@@ -1,5 +1,5 @@
 use gmachine::*;
-use heap::{Heap, Addr};
+use heap::Heap;
 use ast::{Name, Program, ScDef, Expr, LetEq};
 use std::collections::HashMap;
 

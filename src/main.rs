@@ -1,6 +1,5 @@
 mod ast;
 mod parser;
-mod printer;
 mod gmachine;
 mod lexer;
 mod token;
@@ -9,11 +8,10 @@ mod compiler;
 
 use std::env;
 use std::path::Path;
+use std::process;
 
 use parser::parse;
-use printer::show_result;
 use compiler::compile;
-use gmachine::eval;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -25,10 +23,15 @@ fn main() {
 }
 
 fn run_prog<P: AsRef<Path>>(file_path: P) {
-    match parse(file_path) {
-        Ok(prog) => {
-            show_result(eval(compile(prog)));
-        }
-        Err(err) => println!("{}", err),
-    }
+    let prog = parse(file_path).unwrap_or_else(|err| {
+                                                   println!("{}", err);
+                                                   process::exit(1);
+                                               });
+    compile(prog)
+        .run()
+        .unwrap_or_else(|err| {
+                            println!("{}", err);
+                            process::exit(1);
+                        })
+        .show();
 }
