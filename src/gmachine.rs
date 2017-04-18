@@ -41,6 +41,13 @@ enum Instruction {
     Mul,
     Div,
     Neg,
+    Equal,
+    Noteq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Cond(GmCode, GmCode),
     Pack(usize, usize),
     Casejump(HashMap<usize, GmCode>),
     Split(usize),
@@ -94,6 +101,32 @@ fn build_initial_heap(prog: Program) -> (GmHeap, GmGlobals) {
              (String::from("/"),
               2,
               vec![Unwind, Pop(2), Update(2), Div, Eval, Push(1), Eval, Push(1)]),
+             (String::from("=="),
+              2,
+              vec![Unwind, Pop(2), Update(2), Equal, Eval, Push(1), Eval, Push(1)]),
+             (String::from("!="),
+              2,
+              vec![Unwind, Pop(2), Update(2), Noteq, Eval, Push(1), Eval, Push(1)]),
+             (String::from("<"),
+              2,
+              vec![Unwind, Pop(2), Update(2), Lt, Eval, Push(1), Eval, Push(1)]),
+             (String::from("<="),
+              2,
+              vec![Unwind, Pop(2), Update(2), Le, Eval, Push(1), Eval, Push(1)]),
+             (String::from(">"),
+              2,
+              vec![Unwind, Pop(2), Update(2), Gt, Eval, Push(1), Eval, Push(1)]),
+             (String::from(">="),
+              2,
+              vec![Unwind, Pop(2), Update(2), Ge, Eval, Push(1), Eval, Push(1)]),
+             (String::from("if"),
+              3,
+              vec![Unwind,
+                   Pop(3),
+                   Update(3),
+                   Cond(vec![Push(1)], vec![Push(2)]),
+                   Eval,
+                   Push(0)]),
              (String::from("negate"), 1, vec![Unwind, Pop(1), Update(1), Neg, Eval, Push(0)])];
     for (name, nargs, code) in primitives {
         let addr = heap.alloc(Node::NGlobal(nargs, code));
@@ -128,11 +161,17 @@ fn compile_r(expr: Expr, env: GmEnvironment) -> GmCode {
 
 enum Flat {
     Pack(usize, usize, Vec<Expr>),
+    If(Expr, Expr, Expr),
     Other(Expr),
 }
 
 fn flatten(mut expr: Expr) -> Flat {
-    let mut flag = false;
+    enum Temp {
+        Cons,
+        Cond,
+        Other,
+    }
+    let mut flag = Temp::Other;
     {
         let mut count: usize = 0;
         let mut e = &expr;
@@ -140,23 +179,51 @@ fn flatten(mut expr: Expr) -> Flat {
             count += 1;
             e = e1;
         }
-        if let &Expr::EConstr(_, a) = e {
-            flag = count == a;
+        match e {
+            &Expr::EConstr(_, a) => {
+                if count == a {
+                    flag = Temp::Cons;
+                }
+            }
+            &Expr::EVar(ref name) => {
+                if name == "if" && count == 3 {
+                    flag = Temp::Cond;
+                }
+            }
+            _ => {}
         }
     }
-    if flag {
-        let mut v = Vec::new();
-        while let Expr::EAp(e1, e2) = expr {
-            v.push(*e2);
-            expr = *e1;
+    match flag {
+        Temp::Other => Flat::Other(expr),
+        Temp::Cons => {
+            let mut v = Vec::new();
+            while let Expr::EAp(e1, e2) = expr {
+                v.push(*e2);
+                expr = *e1;
+            }
+            if let Expr::EConstr(t, a) = expr {
+                Flat::Pack(t, a, v)
+            } else {
+                unreachable!()
+            }
         }
-        if let Expr::EConstr(t, a) = expr {
-            Flat::Pack(t, a, v)
-        } else {
-            unreachable!()
+        Temp::Cond => {
+            if let Expr::EAp(ee, e3) = expr {
+                expr = *ee;
+                if let Expr::EAp(ee, e2) = expr {
+                    expr = *ee;
+                    if let Expr::EAp(_, e1) = expr {
+                        Flat::If(*e1, *e2, *e3)
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    unreachable!()
+                }
+            } else {
+                unreachable!()
+            }
         }
-    } else {
-        Flat::Other(expr)
     }
 }
 
@@ -173,6 +240,11 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
                     .collect();
                 init.append(&mut compile_c(e, new_env));
             }
+            return init;
+        }
+        Flat::If(e0, e1, e2) => {
+            let mut init = vec![Cond(compile_e(e1, env.clone()), compile_e(e2, env.clone()))];
+            init.append(&mut compile_e(e0, env));
             return init;
         }
     };
@@ -222,6 +294,7 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
                                     "-" => vec![Sub],
                                     "*" => vec![Mul],
                                     "/" => vec![Div],
+                                    "==" => vec![Equal],
                                     _ => vec![],
                                 };
                                 if init.is_empty() {
@@ -257,7 +330,7 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
 }
 
 fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
-    use self::Instruction::{Push, PushGlobal, Pushint, Mkap, Pack};
+    use self::Instruction::{Push, PushGlobal, Pushint, Mkap, Pack, Cond};
     let expr = match flatten(expr) {
         Flat::Other(expr) => expr,
         Flat::Pack(t, a, v) => {
@@ -269,6 +342,11 @@ fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
                     .collect();
                 init.append(&mut compile_c(e, new_env));
             }
+            return init;
+        }
+        Flat::If(e0, e1, e2) => {
+            let mut init = vec![Cond(compile_e(e1, env.clone()), compile_e(e2, env.clone()))];
+            init.append(&mut compile_e(e0, env));
             return init;
         }
     };
@@ -385,12 +463,14 @@ impl GmState {
             Slide(n) => self.slide(n),
             Alloc(n) => self.alloc(n),
             Eval => self.eval(),
-            d @ Add | d @ Sub | d @ Mul | d @ Div => self.dyadic(d),
+            d @ Add | d @ Sub | d @ Mul | d @ Div | d @ Equal | d @ Noteq | d @ Lt | d @ Le |
+            d @ Gt | d @ Ge => self.dyadic(d),
             Neg => self.neg(),
             Pack(t, n) => self.pack(t, n),
             Casejump(hm) => self.casejump(hm),
             Split(n) => self.split(n),
             Print => self.print(),
+            Cond(i1, i2) => self.cond(i1, i2),
         }
     }
 
@@ -492,7 +572,7 @@ impl GmState {
     }
 
     fn dyadic(&mut self, instr: Instruction) {
-        use self::Instruction::{Add, Sub, Mul, Div};
+        use self::Instruction::*;
         use self::Node::NNum;
         let addr1 = self.stack.pop().unwrap();
         let addr2 = self.stack.pop().unwrap();
@@ -511,6 +591,12 @@ impl GmState {
                               Sub => n1 - n2,
                               Mul => n1 * n2,
                               Div => n1 / n2,
+                              Equal => if n1 == n2 { 1 } else { 0 },
+                              Noteq => if n1 != n2 { 1 } else { 0 },
+                              Lt => if n1 < n2 { 1 } else { 0 },
+                              Le => if n1 <= n2 { 1 } else { 0 },
+                              Gt => if n1 > n2 { 1 } else { 0 },
+                              Ge => if n1 >= n2 { 1 } else { 0 },
                               _ => unreachable!(),
                           });
         let addr = self.heap.alloc(result);
@@ -526,6 +612,15 @@ impl GmState {
         };
         let addr = self.heap.alloc(Node::NNum(-n));
         self.stack.push(addr);
+    }
+
+    fn cond(&mut self, i1: GmCode, i2: GmCode) {
+        let addr = self.stack.pop().unwrap();
+        if let Node::NNum(n) = self.heap.lookup(addr).unwrap() {
+            self.code.append(&mut if n == 1 { i1 } else { i2 });
+        } else {
+            panic!("Cond: expect a number");
+        };
     }
 
     fn pack(&mut self, t: usize, n: usize) {
