@@ -5,13 +5,15 @@ mod gmachine;
 mod lexer;
 mod token;
 mod heap;
+mod compiler;
 
 use std::env;
 use std::path::Path;
 
 use parser::parse;
 use printer::show_result;
-use gmachine::{eval, compile};
+use compiler::compile;
+use gmachine::eval;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
