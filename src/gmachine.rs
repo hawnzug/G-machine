@@ -47,7 +47,6 @@ enum Instruction {
     Le,
     Gt,
     Ge,
-    Cond(GmCode, GmCode),
     Pack(usize, usize),
     Casejump(HashMap<usize, GmCode>),
     Split(usize),
@@ -56,11 +55,11 @@ enum Instruction {
 
 #[derive(Debug, Clone)]
 enum Node {
-    NNum(i64),
-    NAp(Addr, Addr),
-    NGlobal(usize, GmCode),
-    NInd(Addr),
-    NConstr(usize, Vec<Addr>),
+    Num(i64),
+    Ap(Addr, Addr),
+    Global(usize, GmCode),
+    Ind(Addr),
+    Constr(usize, Vec<Addr>),
 }
 
 #[derive(Debug, Clone)]
@@ -119,22 +118,14 @@ fn build_initial_heap(prog: Program) -> (GmHeap, GmGlobals) {
              (String::from(">="),
               2,
               vec![Unwind, Pop(2), Update(2), Ge, Eval, Push(1), Eval, Push(1)]),
-             (String::from("if"),
-              3,
-              vec![Unwind,
-                   Pop(3),
-                   Update(3),
-                   Cond(vec![Push(1)], vec![Push(2)]),
-                   Eval,
-                   Push(0)]),
              (String::from("negate"), 1, vec![Unwind, Pop(1), Update(1), Neg, Eval, Push(0)])];
     for (name, nargs, code) in primitives {
-        let addr = heap.alloc(Node::NGlobal(nargs, code));
+        let addr = heap.alloc(Node::Global(nargs, code));
         globals.insert(name, addr);
     }
     for scdef in prog {
         let (name, nargs, code) = compile_sc(scdef);
-        let addr = heap.alloc(Node::NGlobal(nargs, code));
+        let addr = heap.alloc(Node::Global(nargs, code));
         globals.insert(name, addr);
     }
     (heap, globals)
@@ -161,14 +152,12 @@ fn compile_r(expr: Expr, env: GmEnvironment) -> GmCode {
 
 enum Flat {
     Pack(usize, usize, Vec<Expr>),
-    If(Expr, Expr, Expr),
     Other(Expr),
 }
 
 fn flatten(mut expr: Expr) -> Flat {
     enum Temp {
         Cons,
-        Cond,
         Other,
     }
     let mut flag = Temp::Other;
@@ -185,11 +174,6 @@ fn flatten(mut expr: Expr) -> Flat {
                     flag = Temp::Cons;
                 }
             }
-            &Expr::EVar(ref name) => {
-                if name == "if" && count == 3 {
-                    flag = Temp::Cond;
-                }
-            }
             _ => {}
         }
     }
@@ -203,23 +187,6 @@ fn flatten(mut expr: Expr) -> Flat {
             }
             if let Expr::EConstr(t, a) = expr {
                 Flat::Pack(t, a, v)
-            } else {
-                unreachable!()
-            }
-        }
-        Temp::Cond => {
-            if let Expr::EAp(ee, e3) = expr {
-                expr = *ee;
-                if let Expr::EAp(ee, e2) = expr {
-                    expr = *ee;
-                    if let Expr::EAp(_, e1) = expr {
-                        Flat::If(*e1, *e2, *e3)
-                    } else {
-                        unreachable!()
-                    }
-                } else {
-                    unreachable!()
-                }
             } else {
                 unreachable!()
             }
@@ -240,11 +207,6 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
                     .collect();
                 init.append(&mut compile_c(e, new_env));
             }
-            return init;
-        }
-        Flat::If(e0, e1, e2) => {
-            let mut init = vec![Cond(compile_e(e1, env.clone()), compile_e(e2, env.clone()))];
-            init.append(&mut compile_e(e0, env));
             return init;
         }
     };
@@ -295,6 +257,11 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
                                     "*" => vec![Mul],
                                     "/" => vec![Div],
                                     "==" => vec![Equal],
+                                    "!=" => vec![Noteq],
+                                    "<=" => vec![Le],
+                                    ">=" => vec![Ge],
+                                    "<" => vec![Lt],
+                                    ">" => vec![Gt],
                                     _ => vec![],
                                 };
                                 if init.is_empty() {
@@ -330,7 +297,7 @@ fn compile_e(expr: Expr, env: GmEnvironment) -> GmCode {
 }
 
 fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
-    use self::Instruction::{Push, PushGlobal, Pushint, Mkap, Pack, Cond};
+    use self::Instruction::{Push, PushGlobal, Pushint, Mkap, Pack};
     let expr = match flatten(expr) {
         Flat::Other(expr) => expr,
         Flat::Pack(t, a, v) => {
@@ -342,11 +309,6 @@ fn compile_c(expr: Expr, env: GmEnvironment) -> GmCode {
                     .collect();
                 init.append(&mut compile_c(e, new_env));
             }
-            return init;
-        }
-        Flat::If(e0, e1, e2) => {
-            let mut init = vec![Cond(compile_e(e1, env.clone()), compile_e(e2, env.clone()))];
-            init.append(&mut compile_e(e0, env));
             return init;
         }
     };
@@ -470,7 +432,6 @@ impl GmState {
             Casejump(hm) => self.casejump(hm),
             Split(n) => self.split(n),
             Print => self.print(),
-            Cond(i1, i2) => self.cond(i1, i2),
         }
     }
 
@@ -480,14 +441,14 @@ impl GmState {
     }
 
     fn pushint(&mut self, n: i64) {
-        let addr = self.heap.alloc(Node::NNum(n));
+        let addr = self.heap.alloc(Node::Num(n));
         self.stack.push(addr);
     }
 
     fn mkap(&mut self) {
         let addr1 = self.stack.pop().unwrap();
         let addr2 = self.stack.pop().unwrap();
-        let addr = self.heap.alloc(Node::NAp(addr1, addr2));
+        let addr = self.heap.alloc(Node::Ap(addr1, addr2));
         self.stack.push(addr);
     }
 
@@ -499,7 +460,7 @@ impl GmState {
     fn update(&mut self, n: usize) {
         let a = self.stack[self.stack.len() - 1];
         let an = self.stack[self.stack.len() - n - 2];
-        self.heap.update(an, Node::NInd(a));
+        self.heap.update(an, Node::Ind(a));
         self.stack.pop();
     }
 
@@ -512,24 +473,24 @@ impl GmState {
         use self::Instruction::Unwind;
         let addr = self.stack[self.stack.len() - 1];
         match self.heap.lookup(addr).unwrap() {
-            Node::NNum(_) |
-            Node::NConstr(_, _) => {
+            Node::Num(_) |
+            Node::Constr(_, _) => {
                 if let Some((old_code, old_stack)) = self.dump.pop() {
                     self.code = old_code;
                     self.stack = old_stack;
                     self.stack.push(addr);
                 }
             }
-            Node::NInd(i) => {
+            Node::Ind(i) => {
                 self.code.push(Unwind);
                 self.stack.pop();
                 self.stack.push(i);
             }
-            Node::NAp(a, _) => {
+            Node::Ap(a, _) => {
                 self.code.push(Unwind);
                 self.stack.push(a);
             }
-            Node::NGlobal(n, c) => {
+            Node::Global(n, c) => {
                 let len = self.stack.len();
                 if len - 1 < n {
                     if let Some((old_code, old_stack)) = self.dump.pop() {
@@ -558,7 +519,7 @@ impl GmState {
 
     fn alloc(&mut self, n: usize) {
         for _ in 0..n {
-            let addr = self.heap.alloc(Node::NInd(0));
+            let addr = self.heap.alloc(Node::Ind(0));
             self.stack.push(addr);
         }
     }
@@ -573,54 +534,54 @@ impl GmState {
 
     fn dyadic(&mut self, instr: Instruction) {
         use self::Instruction::*;
-        use self::Node::NNum;
+        use self::Node::{Num, Constr};
         let addr1 = self.stack.pop().unwrap();
         let addr2 = self.stack.pop().unwrap();
-        let n1 = if let NNum(n1) = self.heap.lookup(addr1).unwrap() {
+        let n1 = if let Num(n1) = self.heap.lookup(addr1).unwrap() {
             n1
         } else {
             panic!("not a number");
         };
-        let n2 = if let NNum(n2) = self.heap.lookup(addr2).unwrap() {
+        let n2 = if let Num(n2) = self.heap.lookup(addr2).unwrap() {
             n2
         } else {
             panic!("not a number");
         };
-        let result = NNum(match instr {
-                              Add => n1 + n2,
-                              Sub => n1 - n2,
-                              Mul => n1 * n2,
-                              Div => n1 / n2,
-                              Equal => if n1 == n2 { 1 } else { 0 },
-                              Noteq => if n1 != n2 { 1 } else { 0 },
-                              Lt => if n1 < n2 { 1 } else { 0 },
-                              Le => if n1 <= n2 { 1 } else { 0 },
-                              Gt => if n1 > n2 { 1 } else { 0 },
-                              Ge => if n1 >= n2 { 1 } else { 0 },
+        let result = match instr {
+            Add => Num(n1 + n2),
+            Sub => Num(n1 - n2),
+            Mul => Num(n1 * n2),
+            Div => Num(n1 / n2),
+            _ => {
+                Constr(if match instr {
+                              Equal => n1 == n2,
+                              Noteq => n1 != n2,
+                              Lt => n1 < n2,
+                              Le => n1 <= n2,
+                              Gt => n1 > n2,
+                              Ge => n1 >= n2,
                               _ => unreachable!(),
-                          });
+                          } {
+                           1
+                       } else {
+                           0
+                       },
+                       vec![])
+            }
+        };
         let addr = self.heap.alloc(result);
         self.stack.push(addr);
     }
 
     fn neg(&mut self) {
         let addr = self.stack.pop().unwrap();
-        let n = if let Node::NNum(n) = self.heap.lookup(addr).unwrap() {
+        let n = if let Node::Num(n) = self.heap.lookup(addr).unwrap() {
             n
         } else {
             panic!("not a number");
         };
-        let addr = self.heap.alloc(Node::NNum(-n));
+        let addr = self.heap.alloc(Node::Num(-n));
         self.stack.push(addr);
-    }
-
-    fn cond(&mut self, i1: GmCode, i2: GmCode) {
-        let addr = self.stack.pop().unwrap();
-        if let Node::NNum(n) = self.heap.lookup(addr).unwrap() {
-            self.code.append(&mut if n == 1 { i1 } else { i2 });
-        } else {
-            panic!("Cond: expect a number");
-        };
     }
 
     fn pack(&mut self, t: usize, n: usize) {
@@ -629,13 +590,13 @@ impl GmState {
         }
         let len = self.stack.len();
         let addr = self.heap
-            .alloc(Node::NConstr(t, self.stack.drain(len - n..).rev().collect()));
+            .alloc(Node::Constr(t, self.stack.drain(len - n..).rev().collect()));
         self.stack.push(addr);
     }
 
     fn casejump(&mut self, mut hm: HashMap<usize, GmCode>) {
         let addr = self.stack.last().unwrap();
-        if let Node::NConstr(t, _) = self.heap.lookup(*addr).unwrap() {
+        if let Node::Constr(t, _) = self.heap.lookup(*addr).unwrap() {
             let mut code = hm.remove(&t).unwrap();
             self.code.append(&mut code);
         } else {
@@ -645,7 +606,7 @@ impl GmState {
 
     fn split(&mut self, n: usize) {
         let addr = self.stack.pop().unwrap();
-        if let Node::NConstr(_, ss) = self.heap.lookup(addr).unwrap() {
+        if let Node::Constr(_, ss) = self.heap.lookup(addr).unwrap() {
             if ss.len() != n {
                 panic!("Split: n != constructor's arity")
             }
@@ -659,8 +620,8 @@ impl GmState {
         use self::Instruction::{Eval, Print};
         let addr = self.stack.pop().unwrap();
         match self.heap.lookup(addr).unwrap() {
-            Node::NNum(n) => self.output += &n.to_string(),
-            Node::NConstr(_, ss) => {
+            Node::Num(n) => self.output += &n.to_string(),
+            Node::Constr(_, ss) => {
                 let n = ss.len();
                 self.stack.extend(ss.iter().rev());
                 for _ in 0..n {
@@ -675,7 +636,7 @@ impl GmState {
 
 fn get_arg(node: Node) -> Addr {
     match node {
-        Node::NAp(_, addr) => addr,
+        Node::Ap(_, addr) => addr,
         _ => unreachable!(),
     }
 }
