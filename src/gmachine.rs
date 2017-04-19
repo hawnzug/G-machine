@@ -23,7 +23,7 @@ pub type GmCode = Vec<Instruction>;
 pub type GmStack = Vec<Addr>;
 pub type GmDump = Vec<GmDumpItem>;
 pub type GmDumpItem = (GmCode, GmStack);
-pub type GmHeap = Heap<Node>;
+pub type GmHeap = Heap;
 pub type GmGlobals = HashMap<Name, Addr>;
 pub type GmStats = u32;
 
@@ -94,6 +94,22 @@ impl GmState {
     fn step(&mut self) -> Result<()> {
         self.stats += 1;
         let instr = self.code.pop().ok_or(RunTimeError::NoInstr)?;
+        if self.heap.size() > 200 {
+            println!("GC starts. {} nodes", self.heap.size());
+            for addr in &self.stack {
+                self.heap.mark_rec(*addr);
+            }
+            for v in &self.dump {
+                for addr in &v.1 {
+                    self.heap.mark_rec(*addr);
+                }
+            }
+            for (_, addr) in &self.globals {
+                self.heap.mark_rec(*addr);
+            }
+            self.heap.clean();
+            println!("GC finishes. {} nodes", self.heap.size());
+        }
         self.dispatch(instr)
     }
 
