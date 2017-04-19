@@ -94,21 +94,19 @@ impl GmState {
     fn step(&mut self) -> Result<()> {
         self.stats += 1;
         let instr = self.code.pop().ok_or(RunTimeError::NoInstr)?;
-        if self.heap.size() > 200 {
-            println!("GC starts. {} nodes", self.heap.size());
-            for addr in &self.stack {
-                self.heap.mark_rec(*addr);
+        if self.heap.size() > 10000 {
+            for addr in &mut self.stack {
+                *addr = self.heap.mark_rec(*addr);
             }
-            for v in &self.dump {
-                for addr in &v.1 {
-                    self.heap.mark_rec(*addr);
+            for v in &mut self.dump {
+                for addr in &mut v.1 {
+                    *addr = self.heap.mark_rec(*addr);
                 }
             }
-            for (_, addr) in &self.globals {
-                self.heap.mark_rec(*addr);
+            for (_, addr) in &mut self.globals {
+                *addr = self.heap.mark_rec(*addr);
             }
             self.heap.clean();
-            println!("GC finishes. {} nodes", self.heap.size());
         }
         self.dispatch(instr)
     }

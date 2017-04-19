@@ -66,30 +66,39 @@ impl Heap {
         self.used.len() - self.free.len()
     }
 
-    pub fn mark_rec(&mut self, addr: Addr) {
+    pub fn mark_rec(&mut self, addr: Addr) -> Addr {
         if let Some(Mark::Clean(_)) = self.used[addr] {
         } else {
-            return;
+            return addr;
         }
-        let optmk = mem::replace(&mut self.used[addr], None);
-        let node = optmk.unwrap().inside();
+        let node = mem::replace(&mut self.used[addr], None)
+            .unwrap()
+            .inside();
         match node {
             Node::Ap(addr1, addr2) => {
-                self.mark_rec(addr1);
-                self.mark_rec(addr2);
+                let a1 = self.mark_rec(addr1);
+                let a2 = self.mark_rec(addr2);
+                self.used[addr] = Some(Mark::Marked(Node::Ap(a1, a2)));
+                addr
             }
-            Node::Ind(addr) => {
-                self.mark_rec(addr);
+            Node::Ind(addr1) => {
+                self.used[addr] = Some(Mark::Clean(Node::Ind(addr1)));
+                self.mark_rec(addr1)
             }
-            Node::Constr(_, ref addrs) => {
-                for addr in addrs {
-                    self.mark_rec(*addr);
+            Node::Constr(t, mut addrs) => {
+                for addr in &mut addrs {
+                    *addr = self.mark_rec(*addr);
                 }
+                self.used[addr] = Some(Mark::Marked(Node::Constr(t, addrs)));
+                addr
             }
-            _ => {}
+            _ => {
+                self.used[addr] = Some(Mark::Marked(node));
+                addr
+            }
         }
-        self.used[addr] = Some(Mark::Marked(node));
     }
+
 
     pub fn clean(&mut self) {
         for (addr, opt) in self.used.iter_mut().enumerate() {
